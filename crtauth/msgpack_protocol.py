@@ -16,6 +16,8 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+import hashlib
+import hmac
 from io import BytesIO
 import io
 import msgpack
@@ -25,14 +27,18 @@ PROTOCOL_VERSION = 1
 
 
 class TypeInfo(object):
+    """
+    TypeInfo instances contains extra information about the type of a field
+    """
     def __init__(self, data_type, size=None, binary=False):
         self._data_type = data_type
         self._size = size
         self._packer = msgpack.Packer(use_bin_type=binary)
 
-    def validate(self, data):
+    def validate(self, data, name):
         if not isinstance(data, self._data_type):
-            raise ValueError("Value should have been of type str")
+            raise ValueError("Value for field %s should have been of %s"
+                             % (name, self._data_type))
 
     def pack(self, value, stream):
         stream.write(self._packer.pack(value))
@@ -44,7 +50,9 @@ class MessageBase(object):
 
     def __init__(self, **kw):
         if len(kw) != len(self.__fields__):
-            raise Exception("Wrong number of constructor parameters")
+            raise RuntimeError("Wrong number of constructor parameters, "
+                               "expected %d got %d",
+                               len(self.__fields__), len(kw))
 
         for key, _ in self.__fields__:
             val = kw.get(key, None)
@@ -63,8 +71,15 @@ class MessageBase(object):
         msgpack.pack(self.__magic__, buf)
         for name, type_info in self.__fields__:
             value = getattr(self, name)
-            type_info.validate(value)
+            type_info.validate(value, name)
             type_info.pack(value, buf)
+        if hmac_secret:
+            offset = buf.tell()
+            buf.seek(0)
+            mac = hmac.new(hmac_secret, buf.read(), hashlib.sha256)
+            buf.seek(offset)
+            msgpack.pack(mac.digest(), buf)
+
         return buf.getvalue()
 
     @classmethod
@@ -73,11 +88,12 @@ class MessageBase(object):
         unpacker = msgpack.Unpacker(stream)
         version = unpacker.unpack()
         if version != PROTOCOL_VERSION:
-            raise exceptions.ProtocolException(
-                "Wrong version, expected %d got %d" % (PROTOCOL_VERSION, version))
+            raise exceptions.ProtocolError(
+                "Wrong version, expected %d got %d" % (PROTOCOL_VERSION,
+                                                       version))
         magic = unpacker.unpack()
         if magic != cls.__magic__:
-            raise exceptions.ProtocolException(
+            raise exceptions.ProtocolError(
                 "Wrong magic, expected %d got %d" % (cls.__magic__, magic))
         kw = dict()
         for name, type_info in cls.__fields__:
