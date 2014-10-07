@@ -53,14 +53,19 @@ class MsgpackTest(unittest.TestCase):
         self.assertRaises(RuntimeError, Dummy().serialize)
 
     def test_wrong_version(self):
-        with self.assertRaises(exceptions.ProtocolError) as e:
+        try:
             msgpack_protocol.Challenge.deserialize("foo")
-        self._starts_with(e.exception.message, "Wrong version")
+            self.fail("Should have thrown wrong version exception")
+        except exceptions.ProtocolError as e:
+            self._starts_with(e.message, "Wrong version")
 
     def test_wrong_magic(self):
-        with self.assertRaises(exceptions.ProtocolError) as e:
+        try:
             msgpack_protocol.Challenge.deserialize("\x01f")
-        self._starts_with(e.exception.message, "Wrong magic")
+            self.fail("Should have thrown wrong magic exception")
+        except exceptions.ProtocolError as e:
+            self._starts_with(e.message, "Wrong magic")
+
 
     def test_add_hmac(self):
         challenge = msgpack_protocol.Challenge(
@@ -75,7 +80,6 @@ class MsgpackTest(unittest.TestCase):
         self.assertEquals(
             s, SERIALIZED + "\xda\x00 CaXJ\xd8\xf2\xca\xad\xdebQ5\x18\x10c"
             "{\xf1]\x1aC\x7ff\x86\xb54\x95\x12\xd0\x96\x17\x9a\xbe")
-
 
     def _starts_with(self, message, prefix):
         if not message.startswith(prefix):
