@@ -77,8 +77,8 @@ class MsgpackTest(unittest.TestCase):
     def test_serialize_no__magic__(self):
         class Dummy(msgpack_protocol.Message):
             def __init__(self):
-                super(Dummy, self).__init__()
                 self.__fields__ = ()
+                super(Dummy, self).__init__()
         self.assertRaises(RuntimeError, Dummy().serialize)
 
     def test_wrong_version(self):
