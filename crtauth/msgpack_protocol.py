@@ -18,12 +18,17 @@
 # under the License.
 import hashlib
 import hmac
-from io import BytesIO
 import io
+
 import msgpack
+
 from crtauth import exceptions
 
+
 PROTOCOL_VERSION = 1
+HMAC_HASH_ALGORITHM = hashlib.sha256
+
+HMAC_SIZE = HMAC_HASH_ALGORITHM().digest_size
 
 
 class TypeInfo(object):
@@ -45,6 +50,9 @@ class TypeInfo(object):
 
 
 class MessageBase(object):
+    """
+    Base class with common functionality for Message and AuthenticatedMessage
+    """
     __fields__ = None
     __magic__ = None
 
@@ -61,7 +69,7 @@ class MessageBase(object):
                     "Missing required argument '%s'" % key)
             setattr(self, key, val)
 
-    def serialize(self, hmac_secret=None):
+    def _do_serialize(self):
         if self.__magic__ is None or self.__fields__ is None:
             raise RuntimeError(
                 "Serialization can only be performed on classes implementing "
@@ -73,17 +81,10 @@ class MessageBase(object):
             value = getattr(self, name)
             type_info.validate(value, name)
             type_info.pack(value, buf)
-        if hmac_secret:
-            offset = buf.tell()
-            buf.seek(0)
-            mac = hmac.new(hmac_secret, buf.read(), hashlib.sha256)
-            buf.seek(offset)
-            msgpack.pack(mac.digest(), buf)
-
-        return buf.getvalue()
+        return buf
 
     @classmethod
-    def deserialize(cls, serialized):
+    def _do_deserialize(cls, serialized):
         stream = io.BytesIO(serialized)
         unpacker = msgpack.Unpacker(stream)
         version = unpacker.unpack()
@@ -98,10 +99,56 @@ class MessageBase(object):
         kw = dict()
         for name, type_info in cls.__fields__:
             kw[name] = unpacker.unpack()
-        return cls(**kw)
+        return cls(**kw), unpacker
 
 
-class Challenge(MessageBase):
+class Message(MessageBase):
+    """
+    Base class for messages not authenticated with a HMAC code
+    """
+    def serialize(self):
+        return self._do_serialize().getvalue()
+
+    @classmethod
+    def deserialize(cls, serialized):
+        return cls._do_deserialize(serialized)[0]
+
+
+class AuthenticatedMessage(MessageBase):
+    """
+    Base class for messages authenticated with a HMAC code
+    """
+    def serialize(self, hmac_secret):
+        """
+        Serialises this instance into the serialization format and appends
+        a SHA256 HMAC at the end computed using the provided hmac_secret
+        """
+        buf = self._do_serialize()
+        offset = buf.tell()
+        buf.seek(0)
+        mac = hmac.new(hmac_secret, buf.read(), HMAC_HASH_ALGORITHM)
+        buf.seek(offset)
+        buf.write(msgpack.Packer(use_bin_type=True).pack(mac.digest()))
+        return buf.getvalue()
+
+    @classmethod
+    def deserialize(cls, serialized, hmac_secret):
+        """
+        Deserialises instances of this class, validating the HMAC appended
+        at the end using the provided hmac_secret
+        """
+        instance, unpacker = cls._do_deserialize(serialized)
+        # the extra 2 bytes taken off is the serialization overhead of byte
+        # strings shorter than 256 bytes.
+        calculated_mac = hmac.new(hmac_secret, serialized[:-HMAC_SIZE-2],
+                                  HMAC_HASH_ALGORITHM).digest()
+        stored_mac = unpacker.unpack()
+        if calculated_mac != stored_mac:
+            raise exceptions.BadResponse("Invalid authentication code")
+        return instance
+
+
+class Challenge(AuthenticatedMessage):
     """
     A challenge.
     """
@@ -112,5 +159,28 @@ class Challenge(MessageBase):
         ("valid_to", TypeInfo(int)),
         ("fingerprint", TypeInfo(str, 6, binary=True)),
         ("server_name", TypeInfo(str)),
+        ("username", TypeInfo(str))
+    )
+
+
+class Response(Message):
+    """
+    A response (a copy of the challenge plus a signature)
+    """
+    __magic__ = ord('r')
+    __fields__ = (
+        ("challenge", TypeInfo(str, binary=True)),
+        ("signature", TypeInfo(str, binary=True)),
+    )
+
+
+class Token(AuthenticatedMessage):
+    """
+    Represents a token used to authenticate the user
+    """
+    __magic__ = ord("t")
+    __fields__ = (
+        ("valid_from", TypeInfo(int)),
+        ("valid_to", TypeInfo(int)),
         ("username", TypeInfo(str))
     )
