@@ -144,6 +144,7 @@ class AuthenticatedMessage(MessageBase):
                                   HMAC_HASH_ALGORITHM).digest()
         stored_mac = unpacker.unpack()
         if calculated_mac != stored_mac:
+            # TODO better exception, perhaps?
             raise exceptions.BadResponse("Invalid authentication code")
         return instance
 

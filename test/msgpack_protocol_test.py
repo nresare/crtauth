@@ -120,6 +120,24 @@ class MsgpackTest(unittest.TestCase):
         self.assertEquals(1365084334, t.valid_from)
         self.assertEquals(1365084634, t.valid_to)
 
+    def test_deserialize_token_wrong_secret(self):
+        self.assertRaises(exceptions.BadResponse,
+                          msgpack_protocol.Token.deserialize,
+                          SERIALIZED_TOKEN, 'wrong')
+
+    def test_deserialize_tampered_message(self):
+        # identical with SERIALIZED_TOKEN except o -> 0 in the username field
+        t = (
+            '\x01t\xceQ]\x88\xae\xceQ]\x89\xda\xa3n0a\xc4 )YT\xc9\x99\xdeI\xc4'
+            '\xb9\xed|$\xda\xcc\xaf/A\x93B\x15t\x14_\\\x89d\x19b[\x8d\xe2o'
+        )
+        self.assertRaises(exceptions.BadResponse,
+                          msgpack_protocol.Token.deserialize,
+                          t, 'gurkburk')
+
+
+
+
     def _starts_with(self, message, prefix):
         if not message.startswith(prefix):
             self.assertFalse("Expected '%s' to be prefix of '%s"
