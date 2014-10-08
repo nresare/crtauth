@@ -51,7 +51,7 @@ def base64url_decode(s):
         return base64.b64decode(s, "-_")
     except:
         _, e, tb = sys.exc_info()
-        raise exceptions.CrtAuthError(
+        raise exceptions.InvalidInputException(
             "Invalid base64 sequence: %s" % e), None, tb
 
 
@@ -84,7 +84,7 @@ class SigningPlug(object):
 
     Signing classes can also be used as context managers.
     """
-    def sign_challenge(self, _):
+    def sign_challenge(self, challenge, fingerprint):
         raise NotImplementedError("Don't use the SigningPlug directly. This "
                                   "is an abstract base class")
 
@@ -108,8 +108,8 @@ class SingleKeySigner(SigningPlug):
     def __init__(self, priv_key):
         self.key = rsa.RSAPrivateKey(priv_key)
 
-    def sign_challenge(self, challenge):
-        return self.key.sign(challenge.serialize())
+    def sign_challenge(self, challenge, _):
+        return self.key.sign(challenge)
 
 
 class AgentSigner(SigningPlug):
@@ -148,7 +148,7 @@ class AgentSigner(SigningPlug):
             if key.fingerprint() == key_fingerprint:
                 return key
 
-    def sign_challenge(self, challenge):
+    def sign_challenge(self, challenge, fingerprint):
         try:
             pub_key = self.__find_key(challenge.fingerprint)
 

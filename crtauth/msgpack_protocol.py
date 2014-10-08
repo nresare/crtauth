@@ -101,6 +101,10 @@ class MessageBase(object):
             kw[name] = unpacker.unpack()
         return cls(**kw), unpacker
 
+    @classmethod
+    def deserialize(cls, serialized):
+        return cls._do_deserialize(serialized)[0]
+
 
 class Message(MessageBase):
     """
@@ -108,10 +112,6 @@ class Message(MessageBase):
     """
     def serialize(self):
         return self._do_serialize().getvalue()
-
-    @classmethod
-    def deserialize(cls, serialized):
-        return cls._do_deserialize(serialized)[0]
 
 
 class AuthenticatedMessage(MessageBase):
@@ -132,7 +132,7 @@ class AuthenticatedMessage(MessageBase):
         return buf.getvalue()
 
     @classmethod
-    def deserialize(cls, serialized, hmac_secret):
+    def deserialize_authenticated(cls, serialized, hmac_secret):
         """
         Deserialises instances of this class, validating the HMAC appended
         at the end using the provided hmac_secret

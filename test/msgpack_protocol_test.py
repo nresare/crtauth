@@ -49,7 +49,7 @@ class MsgpackTest(unittest.TestCase):
     def test_build_challenge(self):
         self.assertEqual(CHALLENGE.serialize("secret"), SERIALIZED_CHALLENGE)
 
-        another = msgpack_protocol.Challenge.deserialize(
+        another = msgpack_protocol.Challenge.deserialize_authenticated(
             SERIALIZED_CHALLENGE, "secret")
         for field in ("unique_data", "valid_from", "valid_to", "fingerprint",
                       "server_name", "username"):
@@ -83,14 +83,14 @@ class MsgpackTest(unittest.TestCase):
 
     def test_wrong_version(self):
         try:
-            msgpack_protocol.Challenge.deserialize("foo", "secret")
+            msgpack_protocol.Challenge.deserialize("foo")
             self.fail("Should have thrown wrong version exception")
         except exceptions.ProtocolError as e:
             self._starts_with(e.message, "Wrong version")
 
     def test_wrong_magic(self):
         try:
-            msgpack_protocol.Challenge.deserialize("\x01f", "secret")
+            msgpack_protocol.Challenge.deserialize("\x01f")
             self.fail("Should have thrown wrong magic exception")
         except exceptions.ProtocolError as e:
             self._starts_with(e.message, "Wrong magic")
@@ -115,14 +115,15 @@ class MsgpackTest(unittest.TestCase):
         self.assertEquals(SERIALIZED_TOKEN, r.serialize('gurkburk'))
 
     def test_deserialize_token(self):
-        t = msgpack_protocol.Token.deserialize(SERIALIZED_TOKEN, 'gurkburk')
+        t = msgpack_protocol.Token.deserialize_authenticated(SERIALIZED_TOKEN,
+                                                             'gurkburk')
         self.assertEquals("noa", t.username)
         self.assertEquals(1365084334, t.valid_from)
         self.assertEquals(1365084634, t.valid_to)
 
     def test_deserialize_token_wrong_secret(self):
         self.assertRaises(exceptions.BadResponse,
-                          msgpack_protocol.Token.deserialize,
+                          msgpack_protocol.Token.deserialize_authenticated,
                           SERIALIZED_TOKEN, 'wrong')
 
     def test_deserialize_tampered_message(self):
@@ -132,7 +133,7 @@ class MsgpackTest(unittest.TestCase):
             '\xb9\xed|$\xda\xcc\xaf/A\x93B\x15t\x14_\\\x89d\x19b[\x8d\xe2o'
         )
         self.assertRaises(exceptions.BadResponse,
-                          msgpack_protocol.Token.deserialize,
+                          msgpack_protocol.Token.deserialize_authenticated,
                           t, 'gurkburk')
 
 
